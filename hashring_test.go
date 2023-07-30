@@ -49,6 +49,7 @@ func assertNodes(t *testing.T, prefix string, ring *HashRing, allExpected []test
 				allActual = append(allActual, testPair{key: pair.key, node: node})
 			}
 		}
+		assert.Equal(t, allExpected, allActual)
 	})
 }
 
@@ -263,7 +264,7 @@ func TestAddNode3(t *testing.T) {
 		{"test1", "b"},
 		{"test2", "e"},
 		{"test3", "c"},
-		{"test4", "d"},
+		{"test4", "b"},
 		{"test5", "c"},
 		{"aaaa", "c"},
 		{"bbbb", "d"},
@@ -305,7 +306,7 @@ func TestAddWeightedNode(t *testing.T) {
 		{"test2", "b"},
 		{"test3", "c"},
 		{"test4", "b"},
-		{"test5", "c"},
+		{"test5", "a"},
 		{"aaaa", "c"},
 		{"bbbb", "b"},
 	})
@@ -331,7 +332,7 @@ func TestUpdateWeightedNode(t *testing.T) {
 		{"test2", "b"},
 		{"test3", "c"},
 		{"test4", "b"},
-		{"test5", "c"},
+		{"test5", "a"},
 		{"aaaa", "c"},
 		{"bbbb", "b"},
 	})
@@ -465,15 +466,15 @@ func TestAddRemoveNode(t *testing.T) {
 	ring = ring.AddNode("e")
 
 	assertNodes(t, "3_", ring, []testPair{
-		{"test", "a"},
-		{"test", "a"},
+		{"test", "d"},
+		{"test", "d"},
 		{"test1", "b"},
-		{"test2", "b"},
+		{"test2", "e"},
 		{"test3", "c"},
-		{"test4", "c"},
-		{"test5", "a"},
-		{"aaaa", "b"},
-		{"bbbb", "e"},
+		{"test4", "d"},
+		{"test5", "c"},
+		{"aaaa", "c"},
+		{"bbbb", "d"},
 	})
 
 	assert2Nodes(t, "4_", ring, []testNodes{
@@ -491,15 +492,15 @@ func TestAddRemoveNode(t *testing.T) {
 	ring = ring.AddNode("f")
 
 	assertNodes(t, "5_", ring, []testPair{
-		{"test", "a"},
-		{"test", "a"},
+		{"test", "d"},
+		{"test", "d"},
 		{"test1", "b"},
-		{"test2", "f"},
-		{"test3", "f"},
-		{"test4", "c"},
-		{"test5", "f"},
-		{"aaaa", "b"},
-		{"bbbb", "e"},
+		{"test2", "e"},
+		{"test3", "c"},
+		{"test4", "b"},
+		{"test5", "c"},
+		{"aaaa", "c"},
+		{"bbbb", "d"},
 	})
 
 	assert2Nodes(t, "6_", ring, []testNodes{
@@ -508,7 +509,7 @@ func TestAddRemoveNode(t *testing.T) {
 		{"test1", []string{"b", "d"}},
 		{"test2", []string{"e", "f"}},
 		{"test3", []string{"c", "e"}},
-		{"test4", []string{"d", "a"}},
+		{"test4", []string{"b", "d"}},
 		{"test5", []string{"c", "e"}},
 		{"aaaa", []string{"c", "e"}},
 		{"bbbb", []string{"d", "a"}},
@@ -517,15 +518,15 @@ func TestAddRemoveNode(t *testing.T) {
 	ring = ring.RemoveNode("e")
 
 	assertNodes(t, "7_", ring, []testPair{
-		{"test", "a"},
-		{"test", "a"},
+		{"test", "d"},
+		{"test", "d"},
 		{"test1", "b"},
 		{"test2", "f"},
-		{"test3", "f"},
-		{"test4", "c"},
-		{"test5", "f"},
-		{"aaaa", "b"},
-		{"bbbb", "f"},
+		{"test3", "c"},
+		{"test4", "d"},
+		{"test5", "c"},
+		{"aaaa", "c"},
+		{"bbbb", "d"},
 	})
 
 	assert2Nodes(t, "8_", ring, []testNodes{
@@ -560,4 +561,24 @@ func TestAddRemoveNode(t *testing.T) {
 
 	expectNodesABC(t, "TestAddRemoveNode_6_", ring)
 	expectNodeRangesABC(t, "", ring)
+}
+
+func TestConsiderUpdateWeightedNode(t *testing.T) {
+	nodes := []string{"a", "b", "c"}
+	ring := New(nodes)
+	changes := ring.ConsiderUpdateWeightedNode("d", 1)
+	assert.Equal(t, 1, len(changes))
+	for _, v := range changes {
+		if v >= 0 || v < -0.99 {
+			t.Fatal("Expected value in range (-1, 0) but got", v)
+		}
+	}
+
+	changes = ring.ConsiderUpdateWeightedNode("a", 0)
+	assert.Equal(t, 1, len(changes))
+	for _, v := range changes {
+		if v < 0 || v > 2 {
+			t.Fatal("Expected value in range (0, 2) but got", v)
+		}
+	}
 }

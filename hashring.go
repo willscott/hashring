@@ -16,14 +16,14 @@ var defaultHashFunc = func() HashFunc {
 }()
 
 type HashKey interface {
-	Less(other HashKey) bool
+	Less(other HashKey) int64
 }
 type HashKeyOrder []HashKey
 
 func (h HashKeyOrder) Len() int      { return len(h) }
 func (h HashKeyOrder) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
 func (h HashKeyOrder) Less(i, j int) bool {
-	return h[i].Less(h[j])
+	return h[i].Less(h[j]) < 0
 }
 
 type HashFunc func([]byte) HashKey
@@ -38,8 +38,8 @@ type HashRing struct {
 
 type Uint32HashKey uint32
 
-func (k Uint32HashKey) Less(other HashKey) bool {
-	return k < other.(Uint32HashKey)
+func (k Uint32HashKey) Less(other HashKey) int64 {
+	return int64(k) - int64(other.(Uint32HashKey))
 }
 
 func New(nodes []string) *HashRing {
@@ -152,7 +152,7 @@ func (h *HashRing) GetNodePos(stringKey string) (pos int, ok bool) {
 	key := h.GenKey(stringKey)
 
 	nodes := h.sortedKeys
-	pos = sort.Search(len(nodes), func(i int) bool { return key.Less(nodes[i]) })
+	pos = sort.Search(len(nodes), func(i int) bool { return key.Less(nodes[i]) < 0 })
 
 	if pos == len(nodes) {
 		// Wrap the search, should return First node
@@ -261,6 +261,7 @@ func (h *HashRing) UpdateWeightedNode(node string, weight int) *HashRing {
 	hashRing.generateCircle()
 	return hashRing
 }
+
 func (h *HashRing) RemoveNode(node string) *HashRing {
 	/* if node isn't exist in hashring, don't refresh hashring */
 	if _, ok := h.weights[node]; !ok {
@@ -290,4 +291,81 @@ func (h *HashRing) RemoveNode(node string) *HashRing {
 	}
 	hashRing.generateCircle()
 	return hashRing
+}
+
+// When changing or adding `node` with weight, calculate the impact on the ring.
+// The response will be any existing nodes in the ring that have their weight changed
+// and with the value representing the fraction - e.g. 0.9 indicates that 10% of the ring space
+// that node was responsible for would now be covered by the changed weight of `node`.
+// the hash space distance metric is calulated through the values of `Less`.
+func (h *HashRing) ConsiderUpdateWeightedNode(node string, weight int) map[string]float32 {
+	currentWeight, ok := h.weights[node]
+	if !ok {
+		currentWeight = 0
+	}
+
+	deltas := map[string]float32{}
+	if weight > currentWeight {
+		for i := currentWeight; i < weight; i++ {
+			newKey := node + "-" + strconv.FormatInt(int64(i), 10)
+			key := h.hashFunc([]byte(newKey))
+			pos := sort.Search(len(h.sortedKeys), func(i int) bool { return key.Less(h.sortedKeys[i]) < 0 })
+			prevPos := pos - 1
+			if pos == len(h.sortedKeys) {
+				pos = 0
+			}
+			if prevPos == -1 {
+				prevPos = len(h.sortedKeys) - 1
+			}
+			currentNodeKey := h.sortedKeys[prevPos]
+			nextNodeKey := h.sortedKeys[pos]
+
+			currentNode := h.ring[currentNodeKey]
+			if _, ok := deltas[currentNode]; !ok {
+				deltas[currentNode] = 0
+			}
+			fullRange := float32(nextNodeKey.Less(currentNodeKey))
+			if fullRange < 0 {
+				fullRange = float32(currentNodeKey.Less(nextNodeKey))
+			}
+			deltas[currentNode] -= (fullRange - float32(key.Less(currentNodeKey))) / fullRange * 1.0 / float32(h.weights[currentNode])
+		}
+	} else {
+		for i := currentWeight; i > weight; i-- {
+			newKey := node + "-" + strconv.FormatInt(int64(i), 10)
+			key := h.hashFunc([]byte(newKey))
+			pos := sort.Search(len(h.sortedKeys), func(i int) bool { return key.Less(h.sortedKeys[i]) < 0 })
+			prevPos := pos - 1
+			if pos == len(h.sortedKeys) {
+				pos = 0
+			}
+			if prevPos == -1 {
+				prevPos = len(h.sortedKeys) - 1
+			}
+			nextPos := pos + 1
+			if nextPos == len(h.sortedKeys) {
+				nextPos = 0
+			}
+			fillingNodeKey := h.sortedKeys[prevPos]
+			nextNodeKey := h.sortedKeys[nextPos]
+
+			expandingNode := h.ring[fillingNodeKey]
+			if _, ok := deltas[expandingNode]; !ok {
+				deltas[expandingNode] = 0
+			}
+			nk := nextNodeKey.Less(key)
+			if nk < 0 {
+				nk = key.Less(nextNodeKey)
+			}
+			kf := key.Less(fillingNodeKey)
+			if kf < 0 {
+				kf = fillingNodeKey.Less(key)
+			}
+			fullRange := (float32(nk) + float32(kf)) / float32(nk)
+			expanderWeight := float32(h.weights[expandingNode])
+			deltas[expandingNode] += ((fullRange - 1) / expanderWeight)
+		}
+	}
+
+	return deltas
 }

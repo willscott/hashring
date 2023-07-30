@@ -10,12 +10,13 @@ type Int64PairHashKey struct {
 	Low  int64
 }
 
-func (k *Int64PairHashKey) Less(other HashKey) bool {
+func (k *Int64PairHashKey) Less(other HashKey) int64 {
 	o := other.(*Int64PairHashKey)
-	if k.High < o.High {
-		return true
+	high := k.High - o.High
+	if high != 0 {
+		return high
 	}
-	return k.High == o.High && k.Low < o.Low
+	return k.Low - o.Low
 }
 
 func NewInt64PairHashKey(bytes []byte) (HashKey, error) {
