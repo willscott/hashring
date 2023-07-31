@@ -325,10 +325,15 @@ func (h *HashRing) ConsiderUpdateWeightedNode(node string, weight int) map[strin
 				deltas[currentNode] = 0
 			}
 			fullRange := float32(nextNodeKey.Less(currentNodeKey))
-			if fullRange < 0 {
+			if fullRange <= 0 {
 				fullRange = float32(currentNodeKey.Less(nextNodeKey))
 			}
-			deltas[currentNode] -= (fullRange - float32(key.Less(currentNodeKey))) / fullRange * 1.0 / float32(h.weights[currentNode])
+			if fullRange < float32(key.Less(currentNodeKey)) {
+				fullRange = float32(key.Less(currentNodeKey))
+			}
+			if fullRange > 0 {
+				deltas[currentNode] -= (fullRange - float32(key.Less(currentNodeKey))) / fullRange * 1.0 / float32(h.weights[currentNode])
+			}
 		}
 	} else {
 		for i := currentWeight; i > weight; i-- {
@@ -361,9 +366,11 @@ func (h *HashRing) ConsiderUpdateWeightedNode(node string, weight int) map[strin
 			if kf < 0 {
 				kf = fillingNodeKey.Less(key)
 			}
-			fullRange := (float32(nk) + float32(kf)) / float32(nk)
-			expanderWeight := float32(h.weights[expandingNode])
-			deltas[expandingNode] += ((fullRange - 1) / expanderWeight)
+			if nk > 0 {
+				fullRange := (float32(nk) + float32(kf)) / float32(nk)
+				expanderWeight := float32(h.weights[expandingNode])
+				deltas[expandingNode] += ((fullRange - 1) / expanderWeight)
+			}
 		}
 	}
 
